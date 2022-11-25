@@ -1,0 +1,921 @@
+<!DOCTYPE html>
+<html>
+  <head>
+    <title>What makes Rust so special?</title>
+    <meta charset="utf-8">
+    <link rel="stylesheet" href="style/style.css"></link>
+    <style>
+      
+    </style>
+  </head>
+  <body>
+    <textarea id="source">
+
+class: center, middle
+
+# What makes Rust so special?
+
+.title[.center[![IoT Services and Architectures](images/rust.png)]]
+
+.left[
+Based on: [Rust ISP 2019](https://github.com/newpavlov/rust-isp-2019) slides  
+Alexandru Radovici, ilustrations by [Mieuneli](http://miau.laura.ro)
+]
+
+---
+
+# Items to talk
+
+An introduction to [Rust](https://www.rust-lang.org/) things.
+
+- Ownership and Borrows
+- Enums with payload
+- No NULL references
+- Traits
+- Lifetime annotations
+
+---
+
+# Ownership
+
+- A variable binding _takes ownership_ of its data.
+    - A piece of data can only have one owner at a time.
+- When a binding goes out of scope, the bound data is released automatically. (`Drop` trait)
+    - For heap-allocated data, this means de-allocation.
+- Data _must be guaranteed_ to outlive its references.
+
+```rust
+fn foo() {
+    // Creates a String
+    // Gives ownership of the String object to s
+    let s = String::from ("This text is owned by s");
+
+    // At the end of the scope, s goes out of scope.
+    // s still owns the String object, so it can be cleaned up.
+}
+```
+
+---
+## Ownership
+
+So here are the basics.
+- When you introduce a variable binding, it takes ownership of its data. And a
+  piece of data can only have one owner at a time.
+- When a variable binding goes out of scope, nothing has access to the data
+  anymore, so it can be released. Which means, if it's on the heap, it can be
+  de-allocated.
+- And data must be guaranteed to outlive its references. Or, all references are
+  guaranteed to be valid.
+
+---
+## Move Semantics
+
+```rust
+let s1 = String::from ("A string");
+
+// Ownership of the String object moves to s2.
+let s2 = s1;
+
+println!("{}", s1); // error: use of moved value `s1`
+```
+
+- `let s2 = s1;`
+    - We don't want to copy the data, since that's expensive.
+    - The data cannot have multiple owners.
+    - Solution: move the String's ownership into `s2`, and declare `s1` invalid.
+- `println!("{}", s1);`
+    - We know that `s1` is no longer a valid variable binding, so this is an error.
+- Rust can reason about this at compile time, so it throws a compiler error.
+
+---
+## Move Semantics
+
+- Moving ownership copies data. BUT:
+    - Often moves are optimized out by compiler.
+    - When we move ownership of a heap allocated data (e.g. `String`), we do
+        not touch data on heap, just few bytes allocated on stack are copied
+        (pointer to heap, length and capacity; 24 bytes on 64-bit machine)
+- Moves are automatic (via assignments); no need to use something like C++'s
+  `std::move`.
+    - However, there are functions like `std::mem::replace` in Rust to provide
+      advanced ownership management.
+- For more finer-grained control see standrard library functions:
+`std::mem::replace`, `std::mem::swap` and others.
+
+---
+## Ownership
+
+- Ownership does not always have to be moved.
+- What would happen if it did? Rust would get very tedious to write:
+
+```rust
+fn string_length(s: String) -> String {
+    // Do whatever here,
+    // then return ownership of `s` back to the caller
+}
+```
+- You could imagine that this does not scale well either.
+    - The more variables you had to hand back, the longer your return type would be!
+    - Imagine having to pass ownership around for 5+ variables at a time :(
+
+```rust
+fn string_length(s1: String, s2: String, ...) -> (String, String, ...) {
+    // Do whatever here,
+    // then return ownership of `s1`, `s2`, ... back to the caller
+}
+```
+---
+## Borrowing
+
+- Instead of transferring ownership, we can _borrow_ data.
+- A variable's data can be borrowed by taking a reference to the variable;
+  ownership doesn't change.
+    - When a reference goes out of scope, the borrow is over.
+    - The original variable retains ownership throughout.
+
+```rust
+let s = String::from ("string");
+
+// s_ref is a reference to s.
+let s_ref = &s;
+
+// use s_ref to access the data in the String s.
+assert_eq!(s.chars().nth(1), s_ref.chars().nth(1));
+```
+
+Rust does automatic dereferencing.
+
+---
+## Borrowing
+
+- Caveat: this adds restrictions to the original variable.
+- Ownership cannot be transferred from a variable while references to it exist.
+    - That would invalidate the reference.
+
+```rust
+let s = String::from("for borrow");
+
+// s_ref is a reference to s.
+let s_ref = &s;
+
+// Moving ownership to s_new would invalidate s_ref.
+// error: cannot move out of `s` because it is borrowed
+let s_new = s;
+
+println! ("{}", s_ref);
+```
+
+Try it without the `println!`
+
+---
+## Borrowing
+
+```rust
+/// `length` only needs `String` temporarily, so it is borrowed.
+fn length(str_ref: &String) -> usize {
+    // vec_ref is auto-dereferenced when you call methods on it.
+    str_ref.len()
+    // you can also explicitly dereference.
+    // (*str_ref).len()
+}
+
+fn main() {
+    let s = String::new ();
+    length(&s);
+    println!("{:?}", s); // this is fine
+}
+```
+- Note the type of `length`: `str_ref` is passed by reference, so it's now an `&String`.
+- References, like bindings, are *immutable* by default.
+- The borrow is over after the reference goes out of scope (at the end of `length`).
+
+---
+## Borrowing
+
+```rust
+/// `push` needs to modify `string` so it is borrowed mutably.
+fn push(str_ref: &mut String, x: &str) {
+    str_ref.push_str (x);
+}
+
+fn main() {
+    let mut s: String = String::from ("");
+    let string_ref: &mut String = &mut s;
+    push(string_ref, "str");
+    assert_eq!(string_ref, "str");
+}
+```
+- Variables can be borrowed by _mutable_ reference: `&mut string_ref`.
+    - `string_ref` is a reference to a mutable `String`.
+    - The type is `&mut String`, not `&String`.
+- Different from a reference which is variable.
+
+---
+## Borrowing
+
+```rust
+/// `push` needs to modify `string` so it is borrowed mutably.
+fn push2(str_ref: &mut String, x: &str) {
+    // error: cannot move out of borrowed content.
+    let string = *str_ref;
+    string.push_str(x);
+}
+
+fn main() {
+    let mut vector = String::from ("");
+    push2(&mut string, "a new str");
+}
+```
+- Error! You can't dereference `string_ref` into a variable binding because that
+  would change the ownership of the data.
+
+---
+## Borrowing
+
+- Rust will auto-dereference variables...
+    - When making method calls on a reference.
+    - When passing a reference as a function argument.
+
+```rust
+/// `length` only needs `s` temporarily, so it is borrowed.
+fn length(s_ref: &&String) -> usize {
+    // s_ref is auto-dereferenced when you call methods on it.
+    s_ref.len()
+}
+
+fn main() {
+    let s = String::from("");
+    length(&&&&&&&&&&&&s);
+}
+```
+
+---
+## Borrowing
+
+- You will have to dereference variables...
+    - When writing into them.
+    - And other times that usage may be ambiguous.
+
+```rust
+let mut a = 5;
+let ref_a = &mut a;
+*ref_a = 4;
+println!("{}", *ref_a + 4);
+// ==> 8
+```
+
+---
+## `Copy` Types
+
+- Rust defines a trait&sup1; named `Copy` that signifies that a type may be
+    copied instead whenever it would be moved.
+- Most primitive types are `Copy` (`i32`, `f64`, `char`, `bool`, etc.)
+- Types that contain references may not be `Copy` (e.g. `Vec`, `String`).
+```rust
+let x: i32 = 12;
+let y = x; // `i32` is `Copy`, so it's not moved :D
+println!("x still works: {}, and so does y: {}", x, y);
+```
+
+&sup1; Like a Java/Go interface or Haskell typeclass
+
+
+---
+## Borrowing Rules
+##### _The Holy Grail of Rust_
+Learn these rules, and they will serve you well.
+
+- You can't keep borrowing something after it stops existing.
+- One object may have many immutable references to it (`&T`).
+- **OR** _exactly one_ mutable reference (`&mut T`) (not both).
+- That's it!
+
+.card[.small[.center[![Borrow Rules](images/sep_borrow_rules.png)]]]
+
+---
+### Borrowing Prevents...
+
+- Iterator invalidation due to mutating a collection you're iterating over.
+- This pattern can be written in C, C++, Java, Python, Javascript...
+    - But may result in, e.g, `ConcurrentModificationException` (at runtime!)
+
+```rust
+let mut vs = [1,2,3,4];
+for v in &vs {
+    vs[1] = 3;
+    println! ("{}", v);
+    // ERROR: cannot borrow `vs` as mutable because
+    // it is also borrowed as immutable
+}
+```
+
+- `pop` needs to borrow `vs` as mutable in order to modify the data.
+- But `vs` is being borrowed as immutable by the loop!
+
+---
+### Borrowing Prevents...
+
+- Use-after-free
+- Valid in C, C++...
+
+```rust
+let y: &i32;
+{
+    let x = 5;
+    y = &x; // error: `x` does not live long enough
+}
+println!("{}", *y);
+```
+
+- The full error message:
+
+```
+error: `x` does not live long enough
+note: reference must be valid for the block suffix following statement
+    0 at 1:16
+...but borrowed value is only valid for the block suffix
+    following statement 0 at 4:18
+```
+
+- This eliminates a _huge_ number of memory safety bugs _at compile time_.
+- As a side note, this technique of creating a block to limit the scope of a
+variable (in this case x) is pretty useful.
+
+---
+### Borrowing Prevents...
+
+- Data races in multithreaded environments.
+- It checks at compile time if it's safe to share or send a given piece of data.
+- Compiler ensures that programm uses necessary synchronization using various primitives: mutexes, atomics, channels, etc.
+- NB: data races != race condition.
+- Check out TRPL section of ["Fearless Concurrency"](https://doc.rust-lang.org/book/ch16-00-concurrency.html)
+
+---
+## Methods parameters
+
+- The first argument to a method, named `self`, determines what kind of ownership the method
+  requires.
+- `&self`: the method *borrows* the value.
+    - Use this unless you need a different ownership model.
+- `&mut self`: the method *mutably borrows* the value.
+    - The function needs to modify the struct it's called on.
+- `self`: the method takes ownership.
+    - The function consumes the value and may return something else.
+
+---
+
+# `match` 
+- `switch` on steroids.
+
+```rust
+let x = 3;
+
+match x {
+    1 => println!("one fish"),  // <- comma required
+    2 => {
+        println!("two fish");
+        println!("two fish");
+    },  // <- comma optional when using braces
+    // we can match several patterns in one arm
+    3 | 4 => println!("three or four, dunno"),
+    _ => println!("no fish for you"), // "otherwise" case
+}
+```
+
+- `match` takes an expression (`x`) and branches on a list of `value => expression` statements.
+- The entire match evaluates to one expression.
+    - Like `if`, all arms must evaluate to the same type.
+- `_` is commonly used as a catch-all (cf. Haskell, OCaml)
+
+---
+
+## `match` pattern
+```rust
+let x = 3;
+let y = -3;
+let q = 10;
+
+let s = match (x, y) {
+    (1, 1) => "one".to_string(),
+    (2, j) => format!("two, {}", j),
+    (_, 3) => "three".to_string(),
+    (i, j) if i > 5 && j < 0 => "On guard!".to_string(),
+    // NB: note that we do not test x == 10 here!
+    (q, k) => format!("???: {} {}", q, k),
+};
+println!("{}", s);
+```
+
+- The matched expression can be any expression (l-value), including tuples and function calls.
+    - Matches can bind variables. `_` is a throw-away variable name.
+- You _must_ write an exhaustive match in order to compile.
+- Use `if`-guards to constrain a match to certain conditions.
+- Patterns can get very complex.
+
+---
+
+# Enum
+
+- An enum, or "sum type", is a way to express some data that may be one of several things.
+- Similar to the union type in C
+- Much more powerful than in Java, C, C++, C#...
+- Each enum variant can have optional payloads:
+    - no data (unit variant)
+    - named data (struct variant)
+    - unnamed ordered data (tuple variant)
+
+```rust
+enum Resultish {
+    Ok,
+    Warning { code: i32, message: String },
+    Err(String)
+}
+```
+
+.card[.small[.center[![Enum](../images/sep_enum.png)]]]
+
+---
+class: split-70
+# Enum `match`-ing
+
+- Enum variants are namespaced by their enum type: `Resultish::Ok`.
+    - You can import all variants with `use Resultish::*`.
+- Enums, much as you'd expect, can be matched on like any other data type.
+
+.column[
+```rust
+match make_request() {
+    Resultish::Ok =>
+        println!("Success!"),
+    Resultish::Warning { code, message } =>
+        println!("Warning: {}!", message),
+    Resultish::Err(s) =>
+        println!("Failed with error: {}", s),
+}
+```
+]
+
+.column[
+.card[.small_vertical[.center[![Enum](images/sep_match_example.png)]]]
+]
+
+---
+
+class: split-70
+
+# `Option` .top_image[![Seatbelt](../images/seatbelt.png)] 
+
+- Rust has no NULL type
+- a variable of a type has to store a value of that actual type
+- a reference has to exist and point to a valid memory
+
+Use `Option` enum
+
+.column[
+```rust
+enum Option<T> {
+  Some(T)
+  None,
+}
+```
+
+T is any valid type
+]
+
+.column[
+.card[.small_vertical[.center[![Option](images/sep_option.png)]]]
+]
+
+---
+
+## `Option` example
+
+Rust automatically imports  `Option::*`
+
+```rust
+fn integer_division (a:isize, b: isize) -> Option<isize> {
+  if b == 0 {
+    None
+  } else {
+    Some(a / b)
+  }
+}
+
+fn main () {
+  let x = 120;
+  let y = 7;
+  match integer_division (x, y) {
+    Some(d) => println! ("{}:{} = {}", x, y, d),
+    None => println! ("division by 0")
+  };
+}
+```
+
+---
+
+# Traits
+
+
+- Similar to interfaces in Java
+- Methods that types have to implement
+
+.column[
+```rust
+struct Professor {
+  firstname: String,
+  lastname: String,
+  age: usize,
+  // add subjects
+}
+
+trait Person {
+  fn get_name (&self) -> String;
+  fn get_job (&self) -> String;
+}
+
+impl Person for Professor {
+  fn get_name (&self) -> String {
+    // ...
+  }
+
+  fn get_job (&self) -> String {
+    // ...
+  }
+}
+```
+]
+
+.column[
+.card[.small_vertical[.center[![Struct](images/sep_struct.png)]]]
+]
+
+---
+
+## Generics with Trait Bounds
+
+- Multiple trait bounds are specified like `T: Clone + Ord`.
+- There's no way (yet) to specify [negative trait bounds](https://internals.rust-lang.org/t/pre-rfc-mutually-exclusive-traits/2126).
+  - e.g. you can't stipulate that a `T` must not be `Clone`.
+
+```rust
+fn digital_write<P: Configure + Output>(p: P, value: usize) {
+   p.make_output ();
+   if value == 1 {
+       p.set ();
+   } else {
+       p.clear ();
+   }
+}
+```
+
+---
+## Generic Types With Trait Bounds
+
+- You can also define structs with generic types and trait bounds.
+- Be sure to declare all of your generic types in the struct header _and_ the
+  impl block header.
+- Only the impl block header needs to specify trait bounds.
+    - This is useful if you want to have multiple impls for a struct each with
+      different trait bounds
+
+```rust
+struct MyDriver<P: Pin> {
+    pin1: &'static P,
+    pin2: &'static P,
+    // ...
+}
+```
+
+And without trait bounds
+
+```rust
+struct MyDriver<P> {
+    pin1: &'static P,
+    pin2: &'static P,
+    // ...
+}
+```
+
+---
+## Generic Types With Trait Bounds
+
+```rust
+impl<P: Pin> Driver for MyDriver<P> {
+   // ...
+}
+```
+
+---
+## Inheritance (kinda)
+
+- Some traits may require other traits to be implemented first.
+    - e.g., `Eq` requires that `PartialEq` be implemented, and `Copy` requires `Clone`.
+- Implementing the `Child` trait below requires you to also implement `Parent`.
+
+```rust
+trait Parent {
+    fn foo(&self) {
+        // ...
+    }
+}
+
+trait Child: Parent {
+    fn bar(&self) {
+        self.foo();
+        // ...
+    }
+}
+```
+
+---
+# Lifetimes Annotations
+
+- Lifetimes generally have a pretty steep learning curve.
+- Don't worry if you don't understand these right away.
+
+.title[.center[![Din Lac in Put](images/mieuneli_din_lac_in_put.png)]]
+
+---
+### Question .top_image[![Questions](../images/question.svg)]
+
+Q1: How do you use free?
+
+```c
+#include <stdio.h>
+#include <string.h>
+#include <stdlib.h>
+
+char * without_first_word (char *s);
+
+int main ()
+{
+    char * s = strdup ("ana has apples");
+    char *wfw = without_first_word (s);
+    // free (s);   <-- before printf
+    printf ("%s\n", wfw);
+    // free (wfw); <-- after printf
+}
+
+```
+
+---
+### Question .top_image[![Questions](../images/question.svg)]
+
+Q2: How do you use free?
+
+```c
+// program: bear-salamander-anteater
+#include <stdio.h>
+#include <string.h>
+#include <stdlib.h>
+
+char * without_first_word (char *s) {
+    int pos = 0;
+    for (unsigned int i=0; i < strlen (s); i++) {
+        if (s[i] != ' ') pos = pos + 1;
+        else break;
+    }
+    return &s[pos];
+}
+
+int main ()
+{
+    char * s = strdup ("ana has apples");
+    char *wfw = without_first_word (s);
+    // free (s);    <-- before printf
+    printf ("%s\n", wfw);
+    // free (wfw);  <-- after printf
+}
+
+```
+
+---
+### Question .top_image[![Questions](../images/question.svg)]
+
+Q3: How do you use free?
+
+```c
+// program: oyster-guanaco-dinosaur
+#include <stdio.h>
+#include <string.h>
+#include <stdlib.h>
+
+char * without_first_word (char *s) {
+    int pos = 0;
+    for (unsigned int i=0; i < strlen (s); i++) {
+        if (s[i] != ' ') pos = pos + 1;
+        else break;
+    }
+    return strdup (&s[pos]);
+}
+
+int main ()
+{
+    char * s = strdup ("ana has apples");
+    char *wfw = without_first_word (s);
+    // free (s);   <-- before printf
+    printf ("%s\n", wfw);
+    // free (wfw);  <-- before printf
+}
+
+```
+
+---
+### Lifetime annotations
+
+From a birds eye view, how should Rust free `s` and `wfw`?
+
+```rust
+fn without_first_word<'a> (s: &'a str) -> &'a str;
+
+fn main() {
+    let s = String::from("ana has apples"); 
+    let wfw = without_first_word (&s);      
+    // drop (s)
+    println! ("{}", wfw);                  
+    // drop (s)
+}                                         
+```
+
+
+---
+### This is why lifetimes are useful.
+
+```rust
+fn without_first_word<'a> (s: &'a str) -> &'a str {
+    let mut pos = 0;
+    for a in s.chars() {
+        if a != ' ' { pos = pos + 1; }
+        else { break; }
+    }
+    &s[pos..]
+}
+
+fn main() {
+    let s = String::from("ana has apples");
+    let wfw = without_first_word (&s);
+    // drop (s)
+    println! ("{}", wfw);
+}
+```
+
+---
+### Efective Lifetimes 
+
+```rust
+fn without_first_word<'a> (s: &'a str) -> &'a str {
+    let mut pos = 0;
+    for a in s.chars() {
+        if a != ' ' { pos = pos + 1; }
+        else { break; }
+    }
+    &s[pos..]
+}
+
+fn main() {
+    let s = String::from("ana has apples"); // <--- s lifetime ('ls) starts here
+    let wfw = without_first_word (&s);      // <--- wfw lifetime ('lwfw) starts here
+    // drop (s)                             // <--- s lifetime ('ls) ends here, wfw lifetime ('wfw) ends here (due to 'ls)
+                                            //      t lifetime ('ts) starts here
+    println! ("{}", wfw);                   // <--- wfw lifetime ('lwfw) actually ends here
+}                                           // <--- t lifetime ('ts) ends here
+```
+
+---
+### Lifetime annotations
+
+```rust
+fn without_first_word<'a> (s: &'a str) -> &'a str;
+
+fn main() {
+    let s = String::from("ana has apples"); // <--- s lifetime ('ls) starts here
+    let wfw = without_first_word (&s);      // <--- wfw lifetime ('lwfw) starts here
+    // drop (s)                             // <--- s lifetime ('ls) ends here, wfw lifetime ('wfw) ends here (due to 'ls)
+                                            //      t lifetime ('ts) starts here
+    println! ("{}", wfw);                   // <--- wfw lifetime ('lwfw) actually ends here
+}                                           // <--- t lifetime ('ts) ends here
+```
+
+---
+### Question .top_image[![Questions](../images/question.svg)]
+
+Can we use free for `s1` and `s2` before `printf`?
+
+```c
+#include <stdlib.h>
+#include <stdio.h>
+#include <string.h>
+
+char * smaller (char *s1, char *s2);
+
+int main () {
+    char *s1 = strdup ("ip");
+    char *s2 = strdup ("workshop");
+    char *small = smaller (s1, s2);
+    // free (s1);
+    // free (s2);
+    printf ("%s\n", small);
+}
+
+```
+
+---
+### Multiple Lifetime Parameters
+
+```c
+// program: wolverine-mallard-gull
+#include <stdlib.h>
+#include <stdio.h>
+#include <string.h>
+
+char * smaller (char *s1, char *s2) {
+    if (strlen(s1) > strlen(s2)) return s2;
+    else return s1;
+}
+
+int main () {
+    char *s1 = strdup ("ip");
+    char *s2 = strdup ("workshop");
+    char *small = smaller (s1, s2);
+    // free (s1);
+    // free (s2);
+    printf ("%s\n", small);
+}
+
+```
+
+---
+### Multiple Lifetime Parameters
+
+```rust
+fn smaller <'a> (s1: &'a str, s2: &'a str) -> &'a str {}
+
+fn main() {
+    let s1 = String::from("ip"); 
+    let s2 = String::from("workshop"); 
+    let small = smaller (&s1, &s2);
+    // drop (s1)
+    // drop (s2)
+    println! ("{}", small);                  
+}                                          
+```
+
+---
+### Question .top_image[![Questions](../images/question.svg)]
+
+Why can't we free s2?
+
+```rust
+fn append <'a> (s: &'a mut String, n: &'a str) -> &'a str {
+    s.push_str (n);
+    s
+}
+
+fn main() {
+    let mut s1 = String::from("ip"); 
+    let s2 = String::from(" workshop"); 
+    let title = append (&mut s1, &s2);
+    // let t1 = s1; // equivalent of free (s1)
+    let t2 = s2; // equivalent of free (s2)
+    println! ("{}", title);                  
+}                                          
+```
+---
+### Multiple Lifetime Parameters
+
+We now can free s2. 
+
+```rust
+fn append <'a, 'b> (s: &'a mut String, n: &'b str) -> &'a str {
+    s.push_str (n);
+    s
+}
+
+fn main() {
+    let mut s1 = String::from("ip"); 
+    let s2 = String::from(" workshop"); 
+    let title = append (&mut s1, &s2);
+    // drop (s1)
+    drop (s2)
+    println! ("{}", title);                  
+}                                          
+```
+
+---
+
+    </textarea>
+    <script src="https://remarkjs.com/downloads/remark-latest.min.js">
+    </script>
+    <script src="script/playground.js">
+    </script>
+    <script>
+      var slideshow = remark.create({
+		navigation: {
+				scroll: false
+			}
+    });
+    window.cPlaygroundUrl = "https://cplayground.com/";
+    window.playgroundUrl = "https://play.rust-lang.org/";
+    </script>
+  </body>
+</html>
