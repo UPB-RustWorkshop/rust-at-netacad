@@ -1,1 +1,2 @@
-# intro-to-rust
+# Introduction to Rust
+
