@@ -19,20 +19,220 @@ class: center, middle
 
 .left[
 Based on: [Rust ISP 2019](https://github.com/newpavlov/rust-isp-2019) slides  
-Alexandru Radovici, ilustrations by [Mieuneli](http://miau.laura.ro)
+Alexandru Radovici, illustrations by [Mieuneli](http://miau.laura.ro)
 ]
 
 ---
+# Old kids on the block
 
-# Items to talk
+- C was developed __50 years__ ago
+- C++ was developed __39 years__ ago
+- is ok when only geeks use computers
 
-An introduction to [Rust](https://www.rust-lang.org/) things.
+Why now?
+- C and C++ were the only languages used for OS
+- C/C++ allow you to do anything
+- few people write code in C, most of them use C++, C#, Java and others
+  - unless you write drivers or embedded software
+  - C++ is another funny story, what about [Go](https://golang.org/)?
 
-- Ownership and Borrows
-- Enums with payload
-- No NULL references
-- Traits
-- Lifetime annotations
+We have new tools available
+- now we have languages like [Rust](https://www.rust-lang.org/)
+
+---
+# New kids on the block
+
+This is what we would most probably use
+
+- Math - [Python](https://www.python.org/)
+- Low level - [Rust](https://www.rust-lang.org/)
+- Services (web servers ...) - [Go](https://golang.org/)
+- Applications
+  - enterprise - [Kotlin](https://kotlinlang.org/)
+  - web applications - [TypeScript](https://www.typescriptlang.org/)
+  - mobile - [Kotlin](https://kotlinlang.org/) / [Swift](https://developer.apple.com/swift/)
+
+- Rocket Science (we assume you work for NASA) - [Matlab](https://www.mathworks.com/products/matlab.html)
+- Electrical Engineering - [LabView](https://www.ni.com/ro-ro/shop/labview.html)
+- Scripting - [Deno](https://deno.land/)
+
+---
+# Security
+
+.center[a developer you will forget something eventually]
+
+.title[.center[![security](images/security.png)]]
+
+---
+## Use after free
+
+What will this sequence print?
+
+```c
+// program: gerbil-snail-tamarin
+#include <stdlib.h>
+#include <stdio.h>
+
+int main(int argc, char **argv) {
+  int *values=(int*)malloc (sizeof(int)*100);
+  values[1] = 120;
+  free (values);
+  printf ("%d\n", values[1]);
+  return 0;
+}
+  
+```
+
+.right_img[.right[![security](images/security.png)]]
+
+---
+
+## Heap overflow
+
+What will this sequence print?
+
+```c
+// program: phil-mouse-bear
+#include <stdlib.h>
+#include <stdio.h>
+
+int main(int argc, char **argv) {
+    // fill memory
+    int *data = (int*)malloc (sizeof(int)*700);
+    for (int i=0; i< 700; i++)
+    {
+        data[i] = 0xBEEFBEEF;
+    }
+    free (data);
+    
+    // alocate
+	int *values=(int*)malloc (sizeof(int)*100);
+	for (int i=0; i< 100; i++) {
+	    values[i] = 0;
+	}
+	int value=values[500];
+	free (values);
+	
+	printf ("value %d\n", value);
+	return 0;
+}
+
+```
+
+.right_img[.right[![security](images/security.png)]]
+
+---
+
+## Stack overflow
+
+What will this sequence print?
+
+```c
+// program: cassowary-finch-moose
+#include <stdlib.h>
+#include <stdio.h>
+
+int main(int argc, char **argv) {
+	int stack_array[100];
+	stack_array[1] = 0;
+	printf ("%d\n", stack_array[100]);
+	return 0;
+}
+
+```
+
+.right_img[.right[![security](images/security.png)]]
+
+---
+
+## `gets`
+
+Even the compiler notices that this is wrong
+
+```c
+// program: pony-porcupine-pony
+#include <stdlib.h>
+#include <stdio.h>
+
+int main(int argc, char **argv) {
+	char s[10];
+	gets(s);
+	return 0;
+}
+
+```
+
+.right_img[.right[![security](images/security.png)]]
+
+---
+
+## Memory leaks
+
+```c
+// program: parrot-quail-monkey
+#include <stdlib.h>
+#include <stdio.h>
+
+void *p;
+
+int main() {
+	p = malloc(7);
+	p = NULL; // The memory is leaked here.
+	return 0;
+}
+
+```
+
+.right_img[.right[![security](images/security.png)]]
+
+---
+
+## Out of scope
+
+```c
+// program:quetzal-ape-buffalo
+#include <stdlib.h>
+#include <stdio.h>
+
+int *p = 0;
+
+int main() {
+	{
+		int x = 0;
+		p = &x;
+	}
+	*p = 5;
+	return 0;
+}
+
+```
+
+.right_img[.right[![security](images/security.png)]]
+
+---
+
+class: split-70
+# Primitive Types 
+
+.column[
+- `unit`: () (similar with `void` from C)
+- `bool`: `true` and `false`
+- `char`: `'c'` or `'😺'` (`char`s are Unicode code-points, i.e. 4 bytes long!)
+
+- Numerics: specify the signedness and size.
+    - `i8`, `i16`, `i32`, `i64`, `i128`, `isize`
+    - `u8`, `u16`, `u32`, `u64`, `u128`, `usize`
+    - `f32`, `f64`
+    - `isize` & `usize` are the size of pointers (and therefore have
+        machine-dependent size)
+    - Literals are spelled like `10i8`, `10u16`, `10.0f32`, `10usize`.
+    - Type inference for non-specific literals default to `i32` or `f64`:
+      - e.g. `10` defaults to `i32`, `10.0` defaults to `f64`.
+]
+
+.column[
+.card[.small[.center[![Data Types](images/sep_datatypes.png)]]]
+]
 
 ---
 
@@ -56,18 +256,7 @@ fn foo() {
 ```
 
 ---
-## Ownership
 
-So here are the basics.
-- When you introduce a variable binding, it takes ownership of its data. And a
-  piece of data can only have one owner at a time.
-- When a variable binding goes out of scope, nothing has access to the data
-  anymore, so it can be released. Which means, if it's on the heap, it can be
-  de-allocated.
-- And data must be guaranteed to outlive its references. Or, all references are
-  guaranteed to be valid.
-
----
 ## Move Semantics
 
 ```rust
@@ -86,21 +275,6 @@ println!("{}", s1); // error: use of moved value `s1`
 - `println!("{}", s1);`
     - We know that `s1` is no longer a valid variable binding, so this is an error.
 - Rust can reason about this at compile time, so it throws a compiler error.
-
----
-## Move Semantics
-
-- Moving ownership copies data. BUT:
-    - Often moves are optimized out by compiler.
-    - When we move ownership of a heap allocated data (e.g. `String`), we do
-        not touch data on heap, just few bytes allocated on stack are copied
-        (pointer to heap, length and capacity; 24 bytes on 64-bit machine)
-- Moves are automatic (via assignments); no need to use something like C++'s
-  `std::move`.
-    - However, there are functions like `std::mem::replace` in Rust to provide
-      advanced ownership management.
-- For more finer-grained control see standrard library functions:
-`std::mem::replace`, `std::mem::swap` and others.
 
 ---
 ## Ownership
@@ -295,26 +469,6 @@ Learn these rules, and they will serve you well.
 ---
 ### Borrowing Prevents...
 
-- Iterator invalidation due to mutating a collection you're iterating over.
-- This pattern can be written in C, C++, Java, Python, Javascript...
-    - But may result in, e.g, `ConcurrentModificationException` (at runtime!)
-
-```rust
-let mut vs = [1,2,3,4];
-for v in &vs {
-    vs[1] = 3;
-    println! ("{}", v);
-    // ERROR: cannot borrow `vs` as mutable because
-    // it is also borrowed as immutable
-}
-```
-
-- `pop` needs to borrow `vs` as mutable in order to modify the data.
-- But `vs` is being borrowed as immutable by the loop!
-
----
-### Borrowing Prevents...
-
 - Use-after-free
 - Valid in C, C++...
 
@@ -340,15 +494,6 @@ note: reference must be valid for the block suffix following statement
 - This eliminates a _huge_ number of memory safety bugs _at compile time_.
 - As a side note, this technique of creating a block to limit the scope of a
 variable (in this case x) is pretty useful.
-
----
-### Borrowing Prevents...
-
-- Data races in multithreaded environments.
-- It checks at compile time if it's safe to share or send a given piece of data.
-- Compiler ensures that programm uses necessary synchronization using various primitives: mutexes, atomics, channels, etc.
-- NB: data races != race condition.
-- Check out TRPL section of ["Fearless Concurrency"](https://doc.rust-lang.org/book/ch16-00-concurrency.html)
 
 ---
 ## Methods parameters
@@ -432,7 +577,7 @@ enum Resultish {
 }
 ```
 
-.card[.small[.center[![Enum](../images/sep_enum.png)]]]
+.card[.small[.center[![Enum](images/sep_enum.png)]]]
 
 ---
 class: split-70
@@ -463,7 +608,7 @@ match make_request() {
 
 class: split-70
 
-# `Option` .top_image[![Seatbelt](../images/seatbelt.png)] 
+# `Option` .top_image[![Seatbelt](images/seatbelt.png)] 
 
 - Rust has no NULL type
 - a variable of a type has to store a value of that actual type
@@ -636,7 +781,7 @@ trait Child: Parent {
 .title[.center[![Din Lac in Put](images/mieuneli_din_lac_in_put.png)]]
 
 ---
-### Question .top_image[![Questions](../images/question.svg)]
+### Question .top_image[![Questions](images/question.svg)]
 
 Q1: How do you use free?
 
@@ -659,7 +804,7 @@ int main ()
 ```
 
 ---
-### Question .top_image[![Questions](../images/question.svg)]
+### Question .top_image[![Questions](images/question.svg)]
 
 Q2: How do you use free?
 
@@ -690,7 +835,7 @@ int main ()
 ```
 
 ---
-### Question .top_image[![Questions](../images/question.svg)]
+### Question .top_image[![Questions](images/question.svg)]
 
 Q3: How do you use free?
 
@@ -731,9 +876,9 @@ fn without_first_word<'a> (s: &'a str) -> &'a str;
 fn main() {
     let s = String::from("ana has apples"); 
     let wfw = without_first_word (&s);      
-    // drop (s)
+    // drop (s);
     println! ("{}", wfw);                  
-    // drop (s)
+    // drop (wfw);
 }                                         
 ```
 
@@ -754,7 +899,7 @@ fn without_first_word<'a> (s: &'a str) -> &'a str {
 fn main() {
     let s = String::from("ana has apples");
     let wfw = without_first_word (&s);
-    // drop (s)
+    // drop (s);
     println! ("{}", wfw);
 }
 ```
@@ -797,7 +942,7 @@ fn main() {
 ```
 
 ---
-### Question .top_image[![Questions](../images/question.svg)]
+### Question .top_image[![Questions](images/question.svg)]
 
 Can we use free for `s1` and `s2` before `printf`?
 
@@ -861,7 +1006,7 @@ fn main() {
 ```
 
 ---
-### Question .top_image[![Questions](../images/question.svg)]
+### Question .top_image[![Questions](images/question.svg)]
 
 Why can't we free s2?
 
@@ -903,13 +1048,11 @@ fn main() {
 
 ---
 
-# Coding, Snacks & Drinks
+# Embedded Rust Workshop
 
-Solve the homework before the workshops.
+Play with the Raspberry Pi Pico in Rust
 
-https://classroom.github.com/a/VYBsE08w
-
-.center[.small[![Din Lac in Put](images/rust-for-beginners.png)]]
+.center[.small[![Embedded Rust 101](images/embedded-rust-101.png)]]
 
     </textarea>
     <script src="https://remarkjs.com/downloads/remark-latest.min.js">
