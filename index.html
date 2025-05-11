@@ -17,6 +17,8 @@ class: center, middle
 
 .title[.center[![IoT Services and Architectures](images/rust.png)]]
 
+What about Zig?
+
 .left[
 Based on: [Rust ISP 2019](https://github.com/newpavlov/rust-isp-2019) slides  
 Alexandru Radovici, illustrations by [Mieuneli](http://miau.laura.ro)
@@ -46,7 +48,7 @@ This is what we would most probably use
 
 - Math - [Python](https://www.python.org/)
 - Low level - [Rust](https://www.rust-lang.org/)
-- Services (web servers ...) - [Go](https://golang.org/)
+- Services (web servers ...) - [Go](https://golang.org/) / [Rust](https://www.rust-lang.org/)
 - Applications
   - enterprise - [Kotlin](https://kotlinlang.org/)
   - web applications - [TypeScript](https://www.typescriptlang.org/)
@@ -55,6 +57,178 @@ This is what we would most probably use
 - Rocket Science (we assume you work for NASA) - [Matlab](https://www.mathworks.com/products/matlab.html)
 - Electrical Engineering - [LabView](https://www.ni.com/ro-ro/shop/labview.html)
 - Scripting - [Deno](https://deno.land/)
+
+---
+# What is new in these languages?
+
+- most of them **they are safe!** (well ... not Zig)
+- build systems (`cargo`)
+- package management (`cargo`) and a package repository (`crates.io`)
+- have a rich standard library
+- testing framework
+
+What is missing?
+
+**incremental replacement** for C++
+
+---
+# Let's start small
+
+- C drop-in replacement
+- no hidden code path, what you write is what you get
+- has a `defer` statement
+- compile-time execution
+- types are constants
+- supports cross-compiling easily
+- provides an allocator
+
+Meet Zero, Zig's mascot
+
+.right_img[.right[![zero](images/zero.svg)]]
+
+---
+## C Drop-In replacement
+
+No need to rewrite everything in C, we can just replace it file by file
+
+```zig
+const c = @cImport({
+    // See https://github.com/ziglang/zig/issues/515
+    @cDefine("_NO_CRT_STDIO_INLINE", "1");
+    @cInclude("stdio.h");
+});
+pub fn main() void {
+    _ = c.printf("hello\n");
+}
+```
+
+---
+## Compile-Time execution
+
+*An interesting way of allowing templates*
+
+```zig
+fn max(comptime T: type, a: T, b: T) T {
+    if (T == bool) {
+        return a or b;
+    } else if (a > b) {
+        return a;
+    } else {
+        return b;
+    }
+}
+
+max(u32, 10, 20);
+```
+
+---
+## Types are constants
+
+Data types and be passed around and be used as constants (`comptime` variables)
+
+```zig
+const Point = struct {
+    x: f32,
+    y: f32,
+};
+```
+
+---
+## Testing framework
+
+```zig
+const std = @import("std");
+
+fn addOne(number: i32) i32 {
+    return number + 1;
+}
+
+test "expect addOne adds one to 41" {
+    try std.testing.expect(addOne(41) == 42);
+}
+
+test addOne {
+    // A test name can also be written using an identifier.
+    // This is a doctest, and serves as documentation for `addOne`.
+    try std.testing.expect(addOne(41) == 42);
+}
+```
+
+Run the tests
+
+```bash
+zig test
+```
+
+---
+## Defer a call
+
+```zig
+const std = @import("std");
+const expect = std.testing.expect;
+const print = std.debug.print;
+
+fn deferExample() !usize {
+    var a: usize = 1;
+
+    {
+        defer a = 2;
+        a = 1;
+    }
+    try expect(a == 2);
+
+    a = 5;
+    return a;
+}
+```
+
+```zig
+test "defer basics" {
+    try expect((try deferExample()) == 5);
+}
+```
+
+---
+## Allocator
+
+Provided allocators:
+- `std.heap.c_allocator` - libc
+- `std.heap.ThreadSafeAllocator`
+- `std.heap.FixedBufferAllocator` - you know at compile time4 how much memory you will use
+- `std.heap.ArenaAllocator` - free all at once
+- `std.heap.ArenaAllocator` - always fails
+- `std.testing.allocator`
+
+```zig
+const std = @import("std");
+
+test "detect leak" {
+    var list = std.ArrayList(u21).init(std.testing.allocator);
+    // missing `defer list.deinit();`
+    try list.append('☔');
+
+    try std.testing.expect(list.items.len == 1);
+}
+```
+
+---
+## What is written in Zig?
+
+.small[.center[![bun](images/bun.svg)]]
+<center>Fast JavaScript all-in-one to</center>
+
+---
+# Rust
+
+- Rust is 10 years old!
+- Seems to be a *de-facto* alternative to C++
+- Memory Safe
+- Used from embedded to the cloud
+- Testing framework
+- Build system
+- Package manager
+
+.right_img[.right[![Rust](images/rust_ferris.png)]]
 
 ---
 # Security
@@ -385,60 +559,6 @@ fn main() {
 - Different from a reference which is variable.
 
 ---
-## Borrowing
-
-```rust
-/// `push` needs to modify `string` so it is borrowed mutably.
-fn push2(str_ref: &mut String, x: &str) {
-    // error: cannot move out of borrowed content.
-    let string = *str_ref;
-    string.push_str(x);
-}
-
-fn main() {
-    let mut vector = String::from ("");
-    push2(&mut string, "a new str");
-}
-```
-- Error! You can't dereference `string_ref` into a variable binding because that
-  would change the ownership of the data.
-
----
-## Borrowing
-
-- Rust will auto-dereference variables...
-    - When making method calls on a reference.
-    - When passing a reference as a function argument.
-
-```rust
-/// `length` only needs `s` temporarily, so it is borrowed.
-fn length(s_ref: &&String) -> usize {
-    // s_ref is auto-dereferenced when you call methods on it.
-    s_ref.len()
-}
-
-fn main() {
-    let s = String::from("");
-    length(&&&&&&&&&&&&s);
-}
-```
-
----
-## Borrowing
-
-- You will have to dereference variables...
-    - When writing into them.
-    - And other times that usage may be ambiguous.
-
-```rust
-let mut a = 5;
-let ref_a = &mut a;
-*ref_a = 4;
-println!("{}", *ref_a + 4);
-// ==> 8
-```
-
----
 ## `Copy` Types
 
 - Rust defines a trait&sup1; named `Copy` that signifies that a type may be
@@ -578,31 +698,6 @@ enum Resultish {
 ```
 
 .card[.small[.center[![Enum](images/sep_enum.png)]]]
-
----
-class: split-70
-# Enum `match`-ing
-
-- Enum variants are namespaced by their enum type: `Resultish::Ok`.
-    - You can import all variants with `use Resultish::*`.
-- Enums, much as you'd expect, can be matched on like any other data type.
-
-.column[
-```rust
-match make_request() {
-    Resultish::Ok =>
-        println!("Success!"),
-    Resultish::Warning { code, message } =>
-        println!("Warning: {}!", message),
-    Resultish::Err(s) =>
-        println!("Failed with error: {}", s),
-}
-```
-]
-
-.column[
-.card[.small_vertical[.center[![Enum](images/sep_match_example.png)]]]
-]
 
 ---
 
@@ -1047,22 +1142,37 @@ fn main() {
 ```
 
 ---
+# What is written in Rust?
 
-# IP Workshop Summer School 2024
+A lot of software in many domains!
 
-11 - 18 August, Târgu Mureș
+- `Deno` - the *New Node* Javascript engine
+- `sudo-rs` which Ubuntu will start using
+- `coreutils` - which includes native Windows now
+- `windows-rs` - win32 in Rust
+- `probe-rs` - embedded debugger
+- `helix` - simpler then nvim
+- `Zed` - editor
+- the new `binder` - Android's core Inter-Process Communication
+
+---
+
+# IP Workshop Summer School 2025
+
+10 - 20 August, Târgu Mureș
 
 .center[.small[![IP Workshop](images/ipworkshop.png)]]
 
 Subscribe using this form for details and a *10% discount*.
 
----
+
+<!-- ---
 
 # Embedded Rust Workshop
 
 Play with the Raspberry Pi Pico in Rust
 
-.center[.small[![Embedded Rust 101](images/embedded-rust-101.png)]]
+.center[.small[![Embedded Rust 101](images/embedded-rust-101.png)]] -->
 
     </textarea>
     <script src="https://remarkjs.com/downloads/remark-latest.min.js">
